@@ -117,7 +117,6 @@ def load_data(args):
                                     target_transform=Categorical(args.num_ways),
                                     num_classes_per_task=args.num_ways,
                                     meta_train=True,
-                                    class_augmentations=class_augmentations,
                                     dataset_transform=dataset_transform,
                                     download=True)
 
@@ -126,7 +125,6 @@ def load_data(args):
                                     target_transform=Categorical(args.num_ways),
                                     num_classes_per_task=args.num_ways,
                                     meta_val=True,
-                                    class_augmentations=class_augmentations,
                                     dataset_transform=dataset_transform)
         meta_test_dataset = Omniglot("data",
                                     transform=transform,
