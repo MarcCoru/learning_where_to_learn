@@ -107,6 +107,7 @@ def load_data(args):
         input_channels=3
 
     if args.dataset=="Omniglot":
+
         dataset_transform = ClassSplitter(shuffle=True,
                                     num_train_per_class=args.num_shots_train,
                                     num_test_per_class=args.num_shots_test)
@@ -133,23 +134,78 @@ def load_data(args):
                                     meta_test=True,
                                     dataset_transform=dataset_transform)
 
-        meta_dataloader["train"] = BatchMetaDataLoader(meta_train_dataset,
+
+        if args.grouped_sampling:
+            _, groups, labels = list(map(list, zip(*meta_train_dataset.dataset.labels)))
+
+            meta_dataloader["train"] = BatchMetaDataLoader(meta_train_dataset,
+                            batch_size=args.batch_size,
+                            sampler=CombinationGroupedRandomSampler(labels, groups, args.num_ways),
+                            shuffle=False,
+                            num_workers=args.num_workers,
+                            pin_memory=True)
+
+            _, groups, labels = list(map(list, zip(*meta_val_dataset.dataset.labels)))
+
+            meta_dataloader["val"] = BatchMetaDataLoader(meta_val_dataset,
                                                 batch_size=args.batch_size,
-                                                shuffle=True,
+                                                sampler=CombinationGroupedRandomSampler(labels, groups, args.num_ways),
+                                                shuffle=False,
                                                 num_workers=args.num_workers,
                                                 pin_memory=True)
 
-        meta_dataloader["val"] = BatchMetaDataLoader(meta_val_dataset,
+            _, groups, labels = list(map(list, zip(*meta_test_dataset.dataset.labels)))
+
+            meta_dataloader["test"]=BatchMetaDataLoader(meta_test_dataset,
+                                                    batch_size=args.batch_size,
+                                                    sampler=CombinationGroupedRandomSampler(labels, groups, args.num_ways),
+                                                    shuffle=False,
+                                                    num_workers=args.num_workers,
+                                                    pin_memory=True)
+
+        if args.grouped_sampling_test_only:
+            meta_dataloader["train"] = BatchMetaDataLoader(meta_train_dataset,
+                                                    batch_size=args.batch_size,
+                                                    shuffle=True,
+                                                    num_workers=args.num_workers,
+                                                    pin_memory=True)
+
+            _, groups, labels = list(map(list, zip(*meta_val_dataset.dataset.labels)))
+
+            meta_dataloader["val"] = BatchMetaDataLoader(meta_val_dataset,
                                                 batch_size=args.batch_size,
-                                                shuffle=True,
+                                                sampler=CombinationGroupedRandomSampler(labels, groups, args.num_ways),
+                                                shuffle=False,
                                                 num_workers=args.num_workers,
                                                 pin_memory=True)
 
-        meta_dataloader["test"]=BatchMetaDataLoader(meta_test_dataset,
-                                                batch_size=args.batch_size,
-                                                shuffle=True,
-                                                num_workers=args.num_workers,
-                                                pin_memory=True)
+            _, groups, labels = list(map(list, zip(*meta_test_dataset.dataset.labels)))
+
+            meta_dataloader["test"]=BatchMetaDataLoader(meta_test_dataset,
+                                                    batch_size=args.batch_size,
+                                                    sampler=CombinationGroupedRandomSampler(labels, groups, args.num_ways),
+                                                    shuffle=False,
+                                                    num_workers=args.num_workers,
+                                                    pin_memory=True)
+
+        else:
+            meta_dataloader["train"] = BatchMetaDataLoader(meta_train_dataset,
+                                                    batch_size=args.batch_size,
+                                                    shuffle=True,
+                                                    num_workers=args.num_workers,
+                                                    pin_memory=True)
+
+            meta_dataloader["val"] = BatchMetaDataLoader(meta_val_dataset,
+                                                    batch_size=args.batch_size,
+                                                    shuffle=True,
+                                                    num_workers=args.num_workers,
+                                                    pin_memory=True)
+
+            meta_dataloader["test"]=BatchMetaDataLoader(meta_test_dataset,
+                                                    batch_size=args.batch_size,
+                                                    shuffle=True,
+                                                    num_workers=args.num_workers,
+                                                    pin_memory=True)
         feature_size=args.hidden_size
         input_channels=1
 
@@ -312,4 +368,29 @@ def load_data(args):
 
     return meta_dataloader, feature_size, input_channels
 
+from torch.utils.data.sampler import RandomSampler
+from itertools import combinations
+import random
 
+class CombinationGroupedRandomSampler(RandomSampler):
+    def __init__(self, labels, groups, num_classes_per_task):
+
+        self.idxs_dict = {k: [idx for g, idx in zip(groups, range(len(labels))) if g == k] for k in set(groups)}
+        self.num_classes_per_task = num_classes_per_task
+
+        self.labels = labels
+        self.groups = groups
+        self.unique_groups = list(set(groups))
+
+        for g in self.unique_groups:
+            if len(self.idxs_dict[g]) < num_classes_per_task: # check if sufficient classes are available in this group
+                print(f"not using on group {g}. it has {len(self.idxs_dict[g])} classes. A {num_classes_per_task}-way classification requires at least {num_classes_per_task} classes.")
+                self.unique_groups.remove(g)
+
+    def __iter__(self):
+        for _ in combinations(range(len(self.labels)), self.num_classes_per_task):
+            # choose a group randomly
+            selected_group = random.choice(self.unique_groups)
+
+            # choose classes within the group
+            yield tuple(random.sample(self.idxs_dict[selected_group], self.num_classes_per_task))

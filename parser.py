@@ -114,4 +114,11 @@ def get_parser():
                         help='Init uniform [0.005, 0.1].')
     parser.add_argument('--meta_constant_init', action='store_true',
                         help='Constant init as step_size.')
+
+    # sampling parameters
+    parser.add_argument('--grouped_sampling', action='store_true',default=False,
+                    help='Sample tasks in groups. E.g., in omniglot only discriminate characters from one alphabet')
+    parser.add_argument('--grouped_sampling_test_only', action='store_true',default=False,
+                help='meta-training without Grouped sampling. for val and test same as group_sampling')
+
     return parser
