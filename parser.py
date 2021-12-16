@@ -118,7 +118,8 @@ def get_parser():
     # sampling parameters
     parser.add_argument('--grouped_sampling', action='store_true',default=False,
                     help='Sample tasks in groups. E.g., in omniglot only discriminate characters from one alphabet')
-    parser.add_argument('--grouped_sampling_test_only', action='store_true',default=False,
-                help='meta-training without Grouped sampling. for val and test same as group_sampling')
 
+    # Task-specific information
+    parser.add_argument('--use_task_information', action='store_true',default=False,
+                help='only relevant in combination with --grouped_sampling')
     return parser

@@ -40,13 +40,26 @@ class MAML(object):
             
             counter += 1
             #DATA
-            train_inputs = task[0].to(args.device)
-            train_targets = task[1].to(args.device) 
-            test_inputs = task[2].to(args.device)
-            test_targets = task[3].to(args.device)
+            if len(task) == 4: # no task-specific into
+                train_inputs = task[0].to(args.device)
+                train_targets = task[1].to(args.device)
+                test_inputs = task[2].to(args.device)
+                test_targets = task[3].to(args.device)
+                taskembedding = None
+            if len(task) == 6: # with task-specific info
+                train_inputs = task[0].to(args.device)
+                train_targets = task[1].to(args.device)
+                test_inputs = task[3].to(args.device)
+                test_targets = task[4].to(args.device)
+
+                # taskembedding is the same for support and query and all samples
+                taskembedding = task[2][0].to(args.device) # task embeddings are repreated for each sample
             #MASK
             if args.gradient_mask or args.weight_mask:
-                mask = self.mask.forward()
+                if args.use_task_information:
+                    mask = self.mask.forward(taskembedding)
+                else:
+                    mask = self.mask.forward()
 
             params = OrderedDict()
             for (name, param) in self.model.named_parameters():
@@ -366,17 +379,32 @@ if __name__ == "__main__":
 
     # MASK
     if args.gradient_mask or args.weight_mask:
-        mask_names = []
-        shapes = []
-        for name, params in classifier.named_parameters():
-            if name in inner_loop_params:
-                mask_names.append(name)
-                shapes.append(params.shape)
+        if not args.use_task_information:
 
-        mask = models.GradientMask(args, weight_names= mask_names,
-                                        weight_shapes=shapes, 
-                                        mask_plus=mask_plus
-                                        ).to(args.device)
+            mask_names = []
+            shapes = []
+            for name, params in classifier.named_parameters():
+                if name in inner_loop_params:
+                    mask_names.append(name)
+                    shapes.append(params.shape)
+
+            mask = models.GradientMask(args, weight_names= mask_names,
+                                            weight_shapes=shapes,
+                                            mask_plus=mask_plus
+                                            ).to(args.device)
+
+        else:
+            mask_names = []
+            shapes = []
+            for name, params in classifier.named_parameters():
+                if name in inner_loop_params:
+                    mask_names.append(name)
+                    shapes.append(params.shape)
+
+            mask = models.GradientMaskWithEmbedding(args, weight_names= mask_names,
+                                            weight_shapes=shapes,
+                                            mask_plus=mask_plus
+                                            ).to(args.device)
 
         # NOTE: The parameters of mask_plus are contained in mask
         if args.optimizer_mask == "ADAM" or args.optimizer_mask == "Adam":

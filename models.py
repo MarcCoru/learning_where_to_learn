@@ -157,6 +157,102 @@ class GradientMask(nn.Module):
             masks = {**masks, **self.mask_plus()}
         return masks
 
+class FiLMBlock(nn.Module):
+    def __init__(self):
+        super(FiLMBlock, self).__init__()
+
+    def forward(self, x, gamma, beta):
+        beta = beta.view(x.size(0), x.size(1), 1, 1)
+        gamma = gamma.view(x.size(0), x.size(1), 1, 1)
+
+        x = gamma * x + beta
+
+        return x
+
+class GradientMaskWithEmbedding(nn.Module):
+    def __init__(self, args, weight_names, weight_shapes, mask_plus):
+        super(GradientMaskWithEmbedding, self).__init__()
+
+        self.weight_names = weight_names
+        self.weight_shapes = weight_shapes
+        self.weight_mask_list = nn.ParameterList([])
+        self.mask_plus = mask_plus
+        self.meta_relu = args.meta_relu
+        self.meta_sgd_linear = args.meta_sgd_linear
+        self.meta_exp = args.meta_exp
+        self.meta_relu_through = args.meta_relu_through
+        self.meta_sgd_init = args.meta_sgd_init
+        self.meta_constant_init = args.meta_constant_init
+        self.weight_embeddingnet_list = torch.nn.ModuleList([])
+
+        weight_names_new = []
+
+        for i, shape, name in zip(range(len(self.weight_shapes)), self.weight_shapes, self.weight_names):
+
+
+            out_dim = torch.prod(torch.tensor(shape))
+            in_dim = 768
+
+            embedding_net = nn.Sequential(
+              nn.Linear(in_dim, 512),
+              nn.ReLU(),
+              nn.Linear(512, out_dim),
+              nn.Tanh()
+              ).to("cuda")
+
+            self.weight_embeddingnet_list.append(embedding_net)
+
+            # if this is given, the mask will come from the x dep hnet
+            if self.mask_plus is not None and "conv" in name:
+                continue
+
+            weight_names_new.append(name)
+            alpha = nn.Parameter(torch.zeros(weight_shapes[i]))
+
+            if self.meta_constant_init:
+                nn.init.uniform_(alpha, a=args.step_size, b=args.step_size)
+            elif self.meta_sgd_init:
+                nn.init.uniform_(alpha, a=0.005, b=0.1)
+            else:
+                if len(weight_shapes[i]) > 1 and args.kaiming_init:
+                    nn.init.kaiming_uniform_(alpha)
+                else:
+                    nn.init.uniform_(alpha, a=-0.5, b=0.5)
+                # control the mean / sparsity init explicitly
+                alpha.data = alpha.data-torch.mean(alpha.data)+args.init_shift
+
+            self.weight_mask_list.append(alpha)
+
+        self.weight_names = weight_names_new
+
+        print("\nInner loop modulation on:")
+        print(*self.weight_names, sep = "\n")
+        self.num_weights = torch.sum(torch.tensor([torch.prod(torch.tensor(w))
+                                                                for w in self.weight_shapes]))
+
+
+    def forward(self, taskembeddings):
+        masks = {}
+        for name, shape, x, net in zip(self.weight_names, self.weight_shapes, self.weight_mask_list, self.weight_embeddingnet_list):
+
+            if True:
+                x = 0.5*(BinaryLayer.apply(net(taskembeddings).view(shape)) + 1)
+            if self.meta_relu_through:
+                x = ReluStraightThrough.apply(x)
+            elif self.meta_sgd_linear:
+                x = x
+            elif self.meta_relu:
+                x = torch.relu(x)
+            elif self.meta_exp:
+                x = torch.exp(x)
+            else:
+                x = 0.5*(BinaryLayer.apply(x) + 1)
+            masks[name] = x
+
+        if self.mask_plus is not None:
+            masks = {**masks, **self.mask_plus()}
+        return masks
+
 #################
 ### Conv4-Net ###
 #################

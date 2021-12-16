@@ -1,5 +1,6 @@
 import os
-from torchmeta.datasets import Omniglot, MiniImagenet, TieredImagenet
+from torchmeta.datasets import MiniImagenet, TieredImagenet
+from .datasets import Omniglot
 from torchmeta.transforms import ClassSplitter, Categorical
 from torchvision.transforms import ToTensor, Resize, Compose
 from torchvision import transforms
@@ -163,31 +164,6 @@ def load_data(args):
                                                     num_workers=args.num_workers,
                                                     pin_memory=True)
 
-        if args.grouped_sampling_test_only:
-            meta_dataloader["train"] = BatchMetaDataLoader(meta_train_dataset,
-                                                    batch_size=args.batch_size,
-                                                    shuffle=True,
-                                                    num_workers=args.num_workers,
-                                                    pin_memory=True)
-
-            _, groups, labels = list(map(list, zip(*meta_val_dataset.dataset.labels)))
-
-            meta_dataloader["val"] = BatchMetaDataLoader(meta_val_dataset,
-                                                batch_size=args.batch_size,
-                                                sampler=CombinationGroupedRandomSampler(labels, groups, args.num_ways),
-                                                shuffle=False,
-                                                num_workers=args.num_workers,
-                                                pin_memory=True)
-
-            _, groups, labels = list(map(list, zip(*meta_test_dataset.dataset.labels)))
-
-            meta_dataloader["test"]=BatchMetaDataLoader(meta_test_dataset,
-                                                    batch_size=args.batch_size,
-                                                    sampler=CombinationGroupedRandomSampler(labels, groups, args.num_ways),
-                                                    shuffle=False,
-                                                    num_workers=args.num_workers,
-                                                    pin_memory=True)
-
         else:
             meta_dataloader["train"] = BatchMetaDataLoader(meta_train_dataset,
                                                     batch_size=args.batch_size,
@@ -237,7 +213,6 @@ def load_data(args):
                                     num_classes_per_task=args.num_ways,
                                     meta_test=True,
                                     dataset_transform=dataset_transform)
-
 
         meta_dataloader["train"] = BatchMetaDataLoader(meta_train_dataset,
                                                 batch_size=args.batch_size,
