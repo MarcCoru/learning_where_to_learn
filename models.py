@@ -236,7 +236,7 @@ class GradientMaskWithEmbedding(nn.Module):
         for name, shape, x, net in zip(self.weight_names, self.weight_shapes, self.weight_mask_list, self.weight_embeddingnet_list):
 
             if True:
-                x = 0.5*(BinaryLayer.apply(net(taskembeddings).view(shape)) + 1)
+                x = 0.5*(BinaryLayer.apply(x + net(taskembeddings).view(shape)) + 1)
             elif self.meta_relu_through:
                 x = ReluStraightThrough.apply(x)
             elif self.meta_sgd_linear:
