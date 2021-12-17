@@ -117,7 +117,7 @@ class GradientMask(nn.Module):
         self.meta_sgd_init = args.meta_sgd_init
         self.meta_constant_init = args.meta_constant_init
         self.with_taskembeddings = with_taskembeddings
-        self.weight_embeddingnet_list = torch.nn.ModuleList([]) if with_taskembeddings else None
+        self.weight_embeddingnet_list = torch.nn.ModuleList([]) if with_taskembeddings else []
 
         weight_names_new = []
 
@@ -136,6 +136,8 @@ class GradientMask(nn.Module):
                     nn.Tanh()
                 )
                 self.weight_embeddingnet_list.append(embedding_net)
+            else:
+                self.weight_embeddingnet_list.append(None)
 
             weight_names_new.append(name)
             alpha = nn.Parameter(torch.zeros(weight_shapes[i]))

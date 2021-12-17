@@ -380,18 +380,18 @@ if __name__ == "__main__":
     # MASK
     if args.gradient_mask or args.weight_mask:
 
-            mask_names = []
-            shapes = []
-            for name, params in classifier.named_parameters():
-                if name in inner_loop_params:
-                    mask_names.append(name)
-                    shapes.append(params.shape)
+        mask_names = []
+        shapes = []
+        for name, params in classifier.named_parameters():
+            if name in inner_loop_params:
+                mask_names.append(name)
+                shapes.append(params.shape)
 
-            mask = models.GradientMask(args, weight_names= mask_names,
-                                            weight_shapes=shapes,
-                                            mask_plus=mask_plus,
-                                            with_taskembeddings=args.with_taskembeddings,
-                                            ).to(args.device)
+        mask = models.GradientMask(args, weight_names= mask_names,
+                                        weight_shapes=shapes,
+                                        mask_plus=mask_plus,
+                                        with_taskembeddings=args.with_taskembeddings,
+                                        ).to(args.device)
 
         # NOTE: The parameters of mask_plus are contained in mask
         if args.optimizer_mask == "ADAM" or args.optimizer_mask == "Adam":
