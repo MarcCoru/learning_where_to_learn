@@ -39,11 +39,11 @@ class ReluStraightThrough(torch.autograd.Function):
 
 class GradientMaskPlus(nn.Module):
     def __init__(self, args, layer_names, layer_sizes, feature_size):
-        
+
         super(GradientMaskPlus,self).__init__()
         self.layer_names=layer_names
         self.layer_sizes=layer_sizes
-        self.meta_relu = args.meta_relu    
+        self.meta_relu = args.meta_relu
         self.meta_relu_through = args.meta_relu_through
         self.meta_sgd_linear = args.meta_sgd_linear
         self.meta_exp = args.meta_exp
@@ -53,7 +53,7 @@ class GradientMaskPlus(nn.Module):
         self.alpha_size=sum(layer_sizes)*(self.n)
         self.out_shift=args.init_shift
         self.alphas=nn.Linear(feature_size, self.alpha_size)
-        
+
         self.weight_embedding_list = nn.ParameterList([])
         self.weight_embedding_list.append(nn.Parameter(
                                    torch.ones(feature_size)))
@@ -64,8 +64,8 @@ class GradientMaskPlus(nn.Module):
         print(*self.layer_names, sep = "\n")
 
     def forward(self):
-        
-    
+
+
         x = torch.randn_like(self.weight_embedding_list[0])*\
                     self.weight_embedding_list[0]*self.noise_std \
                                         + self.weight_embedding_list[1]
@@ -75,7 +75,7 @@ class GradientMaskPlus(nn.Module):
         prev=0
         masks={}
         for i, name in enumerate(self.layer_names):
-           
+
             alpha=alphas[prev:prev+self.layer_sizes[i]]
             alpha=alpha.reshape(64, alpha.shape[0], 3, 3)
             if self.meta_relu_through:
@@ -93,7 +93,17 @@ class GradientMaskPlus(nn.Module):
         return masks
 
 class GradientMask(nn.Module):
-    def __init__(self, args, weight_names, weight_shapes, mask_plus):
+    def __init__(self, args, weight_names, weight_shapes, mask_plus, with_taskembeddings=False, embedding_dim=768):
+        """
+
+        Args:
+            args:
+            weight_names:
+            weight_shapes:
+            mask_plus:
+            with_embedding: expect a path embedding in the forward
+            embedding_dim: dimension of task embedding
+        """
         super(GradientMask, self).__init__()
 
         self.weight_names = weight_names
@@ -103,17 +113,29 @@ class GradientMask(nn.Module):
         self.meta_relu = args.meta_relu
         self.meta_sgd_linear = args.meta_sgd_linear
         self.meta_exp = args.meta_exp
-        self.meta_relu_through = args.meta_relu_through 
+        self.meta_relu_through = args.meta_relu_through
         self.meta_sgd_init = args.meta_sgd_init
         self.meta_constant_init = args.meta_constant_init
+        self.with_taskembeddings = with_taskembeddings
+        self.weight_embeddingnet_list = torch.nn.ModuleList([]) if with_taskembeddings else None
 
         weight_names_new = []
-        
-        for i, name in zip(range(len(self.weight_shapes)), self.weight_names):
+
+        for i, shape, name in zip(range(len(self.weight_shapes)), self.weight_shapes, self.weight_names):
 
             # if this is given, the mask will come from the x dep hnet
             if self.mask_plus is not None and "conv" in name:
                 continue
+
+            if with_taskembeddings:
+                out_dim = torch.prod(torch.tensor(shape))
+                embedding_net = nn.Sequential(
+                    nn.Linear(embedding_dim, 512),
+                    nn.ReLU(),
+                    nn.Linear(512, out_dim),
+                    nn.Tanh()
+                )
+                self.weight_embeddingnet_list.append(embedding_net)
 
             weight_names_new.append(name)
             alpha = nn.Parameter(torch.zeros(weight_shapes[i]))
@@ -126,22 +148,33 @@ class GradientMask(nn.Module):
                 if len(weight_shapes[i]) > 1 and args.kaiming_init:
                     nn.init.kaiming_uniform_(alpha)
                 else:
-                    nn.init.uniform_(alpha, a=-0.5, b=0.5)  
+                    nn.init.uniform_(alpha, a=-0.5, b=0.5)
                 # control the mean / sparsity init explicitly
                 alpha.data = alpha.data-torch.mean(alpha.data)+args.init_shift
 
             self.weight_mask_list.append(alpha)
-        
-        self.weight_names = weight_names_new 
-        
+
+        self.weight_names = weight_names_new
+
         print("\nInner loop modulation on:")
         print(*self.weight_names, sep = "\n")
 
+    def forward(self, taskembeddings=None):
+        """
 
-    def forward(self):
+        Args:
+            taskembeddings: only used if with_embedding=True
+
+
+        """
         masks = {}
-        for name, x in zip(self.weight_names, self.weight_mask_list):
-            if self.meta_relu_through: 
+        for name, shape, x, net in zip(self.weight_names, self.weight_shapes,
+                                       self.weight_mask_list, self.weight_embeddingnet_list):
+
+            if self.with_taskembeddings:
+                x = x + net(taskembeddings).view(shape)
+
+            if self.meta_relu_through:
                 x = ReluStraightThrough.apply(x)
             elif self.meta_sgd_linear:
                 x = x
@@ -169,6 +202,7 @@ class FiLMBlock(nn.Module):
 
         return x
 
+"""
 class GradientMaskWithEmbedding(nn.Module):
     def __init__(self, args, weight_names, weight_shapes, mask_plus):
         super(GradientMaskWithEmbedding, self).__init__()
@@ -235,8 +269,10 @@ class GradientMaskWithEmbedding(nn.Module):
         masks = {}
         for name, shape, x, net in zip(self.weight_names, self.weight_shapes, self.weight_mask_list, self.weight_embeddingnet_list):
 
+            x = x + net(taskembeddings).view(shape)
+
             if True:
-                x = 0.5*(BinaryLayer.apply(x + net(taskembeddings).view(shape)) + 1)
+                x = 0.5*(BinaryLayer.apply(x) + 1)
             elif self.meta_relu_through:
                 x = ReluStraightThrough.apply(x)
             elif self.meta_sgd_linear:
@@ -252,6 +288,7 @@ class GradientMaskWithEmbedding(nn.Module):
         if self.mask_plus is not None:
             masks = {**masks, **self.mask_plus()}
         return masks
+"""
 
 #################
 ### Conv4-Net ###
@@ -266,7 +303,7 @@ def conv_block(in_channels, out_channels, non_lin, **kwargs):
     ]))
 
 class MetaConvModel(MetaModule):
-    def __init__(self,in_channels,out_features,hidden_size=64,feature_size=64, 
+    def __init__(self,in_channels,out_features,hidden_size=64,feature_size=64,
                                                              non_lin=nn.ReLU(),
                                                              bias=True):
         super(MetaConvModel,self).__init__()
@@ -276,9 +313,9 @@ class MetaConvModel(MetaModule):
         self.feature_size=feature_size
         self.bias = bias,
         self.features = MetaSequential(OrderedDict([
-        ('layer1', conv_block(in_channels, hidden_size, non_lin, 
+        ('layer1', conv_block(in_channels, hidden_size, non_lin,
                             kernel_size=3, stride=1,padding=1, bias=self.bias)),
-        ('layer2', conv_block(hidden_size, hidden_size, non_lin,  
+        ('layer2', conv_block(hidden_size, hidden_size, non_lin,
                             kernel_size=3, stride=1,padding=1, bias=self.bias)),
         ('layer3', conv_block(hidden_size, hidden_size, non_lin,
                             kernel_size=3, stride=1,padding=1, bias=self.bias)),
@@ -311,7 +348,7 @@ class DropBlock(MetaModule):
 
         if self.training:
             batch_size, channels, height, width = x.shape
-            
+
             bernoulli = Bernoulli(gamma)
             mask = bernoulli.sample((batch_size, channels, height - \
                    (self.block_size - 1), width - (self.block_size - 1))).cuda()
@@ -328,33 +365,33 @@ class DropBlock(MetaModule):
     def _compute_block_mask(self, mask):
         left_padding = int((self.block_size-1) / 2)
         right_padding = int(self.block_size / 2)
-        
+
         batch_size, channels, height, width = mask.shape
         non_zero_idxs = torch.nonzero(mask)
         nr_blocks = non_zero_idxs.shape[0]
 
         offsets = torch.stack([
                     torch.arange(self.block_size).view(-1, 1).\
-                    expand(self.block_size, self.block_size).reshape(-1), 
-                    torch.arange(self.block_size).repeat(self.block_size), 
+                    expand(self.block_size, self.block_size).reshape(-1),
+                    torch.arange(self.block_size).repeat(self.block_size),
                     ]).t().cuda()
         offsets = torch.cat((torch.zeros(self.block_size**2, 2).\
                              cuda().long(), offsets.long()), 1)
-        
+
         if nr_blocks > 0:
             non_zero_idxs = non_zero_idxs.repeat(self.block_size ** 2, 1)
             offsets = offsets.repeat(nr_blocks, 1).view(-1, 4)
             offsets = offsets.long()
 
             block_idxs = non_zero_idxs + offsets
-            padded_mask = F.pad(mask, (left_padding, right_padding, 
+            padded_mask = F.pad(mask, (left_padding, right_padding,
                                        left_padding, right_padding))
-            padded_mask[block_idxs[:, 0], block_idxs[:, 1], 
+            padded_mask[block_idxs[:, 0], block_idxs[:, 1],
                         block_idxs[:, 2], block_idxs[:, 3]] = 1.
         else:
-            padded_mask = F.pad(mask, (left_padding, right_padding, 
+            padded_mask = F.pad(mask, (left_padding, right_padding,
                                        left_padding, right_padding))
-            
+
         block_mask = 1 - padded_mask
         return block_mask
 
@@ -362,24 +399,24 @@ class DropBlock(MetaModule):
 class BasicBlock(MetaModule):
     expansion = 1
 
-    def __init__(self, inplanes, planes, stride=1, 
-                downsample=None, drop_rate=0.0, drop_block=False, 
+    def __init__(self, inplanes, planes, stride=1,
+                downsample=None, drop_rate=0.0, drop_block=False,
                 block_size=1, max_padding=0):
         super(BasicBlock, self).__init__()
-        self.conv1 = MetaConv2d(inplanes, planes, kernel_size=3, 
+        self.conv1 = MetaConv2d(inplanes, planes, kernel_size=3,
                                 stride=1, padding=1, bias=False)
         self.bn1 = MetaBatchNorm2d(planes, track_running_stats=False)
         self.relu1 = nn.LeakyReLU()
-        self.conv2 = MetaConv2d(planes, planes, kernel_size=3, 
+        self.conv2 = MetaConv2d(planes, planes, kernel_size=3,
                                 stride=1, padding=1, bias=False)
         self.bn2 = MetaBatchNorm2d(planes, track_running_stats=False)
         self.relu2 = nn.LeakyReLU()
-        self.conv3 = MetaConv2d(planes, planes, kernel_size=3, 
+        self.conv3 = MetaConv2d(planes, planes, kernel_size=3,
                                 stride=1, padding=1, bias=False)
         self.bn3 = MetaBatchNorm2d(planes, track_running_stats=False)
         self.relu3 = nn.LeakyReLU()
 
-        self.maxpool = nn.MaxPool2d(stride=stride, kernel_size=[stride,stride], 
+        self.maxpool = nn.MaxPool2d(stride=stride, kernel_size=[stride,stride],
                                                             padding=max_padding)
 
         self.max_pool =  True if stride != max_padding else False
@@ -410,10 +447,10 @@ class BasicBlock(MetaModule):
             residual=self.downsample(x,params=get_subdict(params, 'downsample'))
         out += residual
         out = self.relu3(out)
-        
+
         if self.max_pool:
             out = self.maxpool(out)
-        
+
         if self.drop_rate > 0:
             if self.drop_block == True:
                 feat_size = out.size()[2]
@@ -423,13 +460,13 @@ class BasicBlock(MetaModule):
                             (feat_size - self.block_size + 1)**2
                 out = self.DropBlock(out, gamma=gamma)
             else:
-                out = F.dropout(out, p=self.drop_rate, 
+                out = F.dropout(out, p=self.drop_rate,
                                 training=self.training, inplace=True)
 
         return out
 
 class ResNet(MetaModule):
-    def __init__(self, keep_prob=1.0, avg_pool=True, drop_rate=0.0, 
+    def __init__(self, keep_prob=1.0, avg_pool=True, drop_rate=0.0,
                 dropblock_size=5, out_features=5, wh_size=1, big_network=False):
 
         # NOTE  keep_prob < 1 and drop_rate > 0 are NOT supported!
@@ -438,23 +475,23 @@ class ResNet(MetaModule):
         super(ResNet, self).__init__()
 
         blocks = [BasicBlock, BasicBlock, BasicBlock, BasicBlock]
-        
+
         if big_network:
             num_chn = [64, 160, 320, 640]
         else:
             num_chn = [64, 128, 256, 512]
 
-        self.layer1 = self._make_layer(blocks[0], num_chn[0], stride=2, 
-                                    drop_rate=drop_rate, drop_block=True, 
+        self.layer1 = self._make_layer(blocks[0], num_chn[0], stride=2,
+                                    drop_rate=drop_rate, drop_block=True,
                                     block_size=dropblock_size, max_padding=0)
-        self.layer2 = self._make_layer(blocks[1], num_chn[1], stride=2, 
-                                    drop_rate=drop_rate, drop_block=True, 
+        self.layer2 = self._make_layer(blocks[1], num_chn[1], stride=2,
+                                    drop_rate=drop_rate, drop_block=True,
                                     block_size=dropblock_size, max_padding=0)
-        self.layer3 = self._make_layer(blocks[2], num_chn[2], stride=2, 
-                                    drop_rate=drop_rate, drop_block=True, 
+        self.layer3 = self._make_layer(blocks[2], num_chn[2], stride=2,
+                                    drop_rate=drop_rate, drop_block=True,
                                     block_size=dropblock_size, max_padding=1)
-        self.layer4 = self._make_layer(blocks[3], num_chn[3], stride=1, 
-                                    drop_rate=drop_rate, drop_block=True, 
+        self.layer4 = self._make_layer(blocks[3], num_chn[3], stride=1,
+                                    drop_rate=drop_rate, drop_block=True,
                                     block_size=dropblock_size, max_padding=1)
         if avg_pool:
             self.avgpool = nn.AdaptiveAvgPool2d(1)
@@ -463,26 +500,26 @@ class ResNet(MetaModule):
         self.dropout = nn.Dropout(p=1 - self.keep_prob, inplace=False)
         self.drop_rate = drop_rate
         self.classifier = MetaLinear(num_chn[-1]*wh_size*wh_size, out_features)
-        
+
         for m in self.modules():
             if isinstance(m, MetaConv2d):
                 nn.init.xavier_uniform_(m.weight)
             if isinstance(m, MetaLinear):
                 nn.init.xavier_uniform_(m.weight)
-            
-    def _make_layer(self, block, planes, stride=1, drop_rate=0.0, 
+
+    def _make_layer(self, block, planes, stride=1, drop_rate=0.0,
                     drop_block=False, block_size=1, max_padding=0):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = MetaSequential(
                 MetaConv2d(self.inplanes, planes * block.expansion,
                                 kernel_size=1, stride=1, bias=False),
-                MetaBatchNorm2d(planes * block.expansion, 
+                MetaBatchNorm2d(planes * block.expansion,
                                 track_running_stats=False),
             )
 
         layers = []
-        layers.append(block(self.inplanes, planes, stride, 
+        layers.append(block(self.inplanes, planes, stride,
                     downsample, drop_rate, drop_block, block_size, max_padding))
         self.inplanes = planes * block.expansion
         return MetaSequential(*layers)
@@ -495,5 +532,5 @@ class ResNet(MetaModule):
         if self.keep_avg_pool:
             x = self.avgpool(x)
         features = x.view((x.size(0), -1))
-        return self.classifier(self.dropout(features), 
+        return self.classifier(self.dropout(features),
                                params=get_subdict(params, 'classifier'))

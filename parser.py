@@ -18,17 +18,17 @@ def get_parser():
                         help='Checkpoint models')
     parser.add_argument('--dont_use_cuda', action='store_true',
                         help='Dont use CUDA if available.')
-    parser.add_argument('--seed', type=int, default=-1, 
+    parser.add_argument('--seed', type=int, default=-1,
                         help='Random seed needed for hpsearch - has no effect.')
 
     # Training hps
-    parser.add_argument('--batch_size', type=int, default=2, 
+    parser.add_argument('--batch_size', type=int, default=2,
                         help='Meta-training batch size (#tasks)')
-    parser.add_argument('--test_batch_size', type=int, default=1, 
+    parser.add_argument('--test_batch_size', type=int, default=1,
                         help='Meta-test batch size (#tasks)')
-    parser.add_argument('--epochs', type=int, default=300, 
+    parser.add_argument('--epochs', type=int, default=300,
                         help='Number of epochs to train')
-    parser.add_argument('--batches_train', type=int, default=100, 
+    parser.add_argument('--batches_train', type=int, default=100,
                         help='Number of meta-training task per epoch')
     parser.add_argument('--batches_test',type=int,default=300, metavar='btt',
                         help='Number of meta-testing tasks')
@@ -46,34 +46,34 @@ def get_parser():
                         help='Outer loop learning rate.')
     parser.add_argument('--mask_lr',type=float, default=0.001,
                         help='Outer loop learning rate for masks.')
-    parser.add_argument('--momentum',type=float,default=0.9, 
+    parser.add_argument('--momentum',type=float,default=0.9,
                         help='Momentum for SGD (turns on Nesterov)')
     parser.add_argument('--clamp_outer_gradients', action='store_true',
-                        help='Clamp gradients .')    
+                        help='Clamp gradients .')
 
     # Main network config
     parser.add_argument('--resnet', action='store_true',
                         help='Use Resnet12 as classifier.')
     parser.add_argument('--big_resnet', action='store_true',
-                        help='Use big Resnet12 as classifier.') 
-    parser.add_argument('--hidden_size',type=int,default=64, 
+                        help='Use big Resnet12 as classifier.')
+    parser.add_argument('--hidden_size',type=int,default=64,
                         help='Classifier hidden size when using ConvNet')
     parser.add_argument('--bias', action='store_true',
                         help='Bias parameters in the network or not')
 
     # Few-shot experiment config
-    parser.add_argument('--num_shots_train',type=int,default=5, 
+    parser.add_argument('--num_shots_train',type=int,default=5,
                         help='K shots training phase')
-    parser.add_argument('--num_shots_test',type=int,default=15, 
+    parser.add_argument('--num_shots_test',type=int,default=15,
                     help='K shots test phase')
-    parser.add_argument('--num_ways',type=int,default=5, 
+    parser.add_argument('--num_ways',type=int,default=5,
                         help='Number of labels per task')
     parser.add_argument('--dataset', type=str, default="MiniImagenet",
-                        help='Datsets supported: MiniImageNet, Omniglot')            
+                        help='Datsets supported: MiniImageNet, Omniglot')
     parser.add_argument('--data_aug', action='store_true',
                         help='Augment MiniImageNet data')
     # MAML hyperparameters
-    parser.add_argument('--step_size',type=float,default=0.1, 
+    parser.add_argument('--step_size',type=float,default=0.1,
                         help='Inner loop learning rate.')
     parser.add_argument('--gradient_steps',type=int,default=35,metavar='gs',
                         help='Number of gradient steps in inner loop')
@@ -98,7 +98,7 @@ def get_parser():
     parser.add_argument('--plus_output_shift',type=float, default=0.,
                         help='Shift the output gradient mask plus to ' +
                             'enforce higher / lower sparsity in the beginning.')
-    parser.add_argument('--init_shift', type=float, default=0.0, 
+    parser.add_argument('--init_shift', type=float, default=0.0,
                         help='Shift mask init to control init sparsity.')
     parser.add_argument('--kaiming_init', action='store_true',default=False,
                         help='Mask init.')
@@ -107,7 +107,7 @@ def get_parser():
     parser.add_argument('--meta_relu_through',action='store_true',default=False,
                         help='Meta-SGD straigth through relu.')
     parser.add_argument('--meta_sgd_linear', action='store_true',default=False,
-                        help='Meta-SGD linear instead of Relu.') 
+                        help='Meta-SGD linear instead of Relu.')
     parser.add_argument('--meta_exp', action='store_true',
                         help='Exp learning rate instead Relu.')
     parser.add_argument('--meta_sgd_init', action='store_true',
@@ -120,6 +120,6 @@ def get_parser():
                     help='Sample tasks in groups. E.g., in omniglot only discriminate characters from one alphabet')
 
     # Task-specific information
-    parser.add_argument('--use_task_information', action='store_true',default=False,
+    parser.add_argument('--with_taskembeddings', action='store_true',default=False,
                 help='only relevant in combination with --grouped_sampling')
     return parser
