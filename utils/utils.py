@@ -1,6 +1,6 @@
 import os
-from torchmeta.datasets import MiniImagenet, TieredImagenet
-from .datasets import Omniglot
+from torchmeta.datasets import MiniImagenet
+from .datasets import Omniglot, TieredImagenet
 from torchmeta.transforms import ClassSplitter, Categorical
 from torchvision.transforms import ToTensor, Resize, Compose
 from torchvision import transforms
@@ -38,29 +38,29 @@ def load_data(args):
         dataset_transform = ClassSplitter(shuffle=True,
                                     num_train_per_class=args.num_shots_train,
                                     num_test_per_class=args.num_shots_test)
-        
-        if args.data_aug:            
+
+        if args.data_aug:
             transform_train = Compose([
                     Resize(84),
                     transforms.RandomCrop(84, padding=8),
-                    transforms.ColorJitter(brightness=0.4, 
-                                           contrast=0.4, 
+                    transforms.ColorJitter(brightness=0.4,
+                                           contrast=0.4,
                                            saturation=0.4),
-                    transforms.RandomHorizontalFlip(),  
-                    transforms.ToTensor(), 
-                    transforms.Normalize((0.485, 0.456, 0.406), 
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.485, 0.456, 0.406),
                                          (0.229, 0.224, 0.225))])
         else:
             transform_train = Compose([
                 Resize(84),
-                transforms.ToTensor(), 
-                transforms.Normalize((0.485, 0.456, 0.406), 
+                transforms.ToTensor(),
+                transforms.Normalize((0.485, 0.456, 0.406),
                                      (0.229, 0.224, 0.225))])
 
         transform_test = Compose([
                 Resize(84),
-                transforms.ToTensor(), 
-                transforms.Normalize((0.485, 0.456, 0.406), 
+                transforms.ToTensor(),
+                transforms.Normalize((0.485, 0.456, 0.406),
                                      (0.229, 0.224, 0.225))])
 
         meta_train_dataset = MiniImagenet("data",
@@ -70,7 +70,7 @@ def load_data(args):
                                     meta_train=True,
                                     dataset_transform=dataset_transform,
                                     download=True)
-                                          
+
         meta_val_dataset = MiniImagenet("data",
                                     transform=transform_test,
                                     target_transform=Categorical(args.num_ways),
@@ -91,7 +91,7 @@ def load_data(args):
                                                 shuffle=True,
                                                 num_workers=args.num_workers,
                                                 pin_memory=True)
-                                                
+
         meta_dataloader["val"]=BatchMetaDataLoader(meta_val_dataset,
                                                 batch_size=args.test_batch_size,
                                                 shuffle=True,
@@ -287,7 +287,7 @@ def load_data(args):
         input_channels=3
 
     if args.dataset=="CARS":
-        
+
         if not os.path.exists("data/cars"):
             os.makedirs("data/cars")
 
